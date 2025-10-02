@@ -1,61 +1,42 @@
-# Interactive Exam Management System (SPA)
-เทมเพลตระบบจัดการข้อสอบแบบหน้าเดียว (Single Page Application) ด้วย **HTML5 + CSS3 + Vanilla JS + Tailwind (CDN) + Supabase (CDN)**
+# IEM + LINE LIFF Login via Supabase Edge Function (No native LINE provider)
 
-## โครงสร้างไฟล์
+## สรุปแนวทาง
+- หน้าเว็บใช้ **LIFF** ดึง `id_token` จาก LINE
+- ส่ง `id_token` ไปยัง **Edge Function** (`functions/line-login`)
+- Function ตรวจสอบกับ LINE → สร้าง/อัปเดตผู้ใช้ใน Supabase Auth (อีเมล alias: `{lineUserId}@line.local` + รหัสผ่านแบบ HMAC)
+- Function ทำ **Password Sign-in** กับ Supabase แล้วคืน `access_token`/`refresh_token`
+- ฝั่งเว็บเรียก `supabase.auth.setSession(tokens)` → ได้ session ใช้งาน RLS ได้ทันที
+
+## ตั้งค่า Supabase Functions
+1) ติดตั้ง CLI และ login
+2) ตั้งค่าตัวแปรแวดล้อมของ Function:
 ```
-/css/styles.css
-/index.html
-/js/app.js
-/js/api.js
-/js/auth.js
-/js/config.js      ← ใส่ค่า SUPABASE_URL / SUPABASE_ANON_KEY ที่นี่
-/js/router.js
-/js/student.js
-/js/teacher.js
-/js/stats.js
+supabase functions secrets set   SUPABASE_URL="https://YOUR_PROJECT.supabase.co"   SUPABASE_ANON_KEY="YOUR_PUBLIC_ANON_KEY"   SUPABASE_SERVICE_ROLE="YOUR_SERVICE_ROLE_KEY"   LINE_CHANNEL_ID="YOUR_LINE_CHANNEL_ID"   EDGE_HMAC_SECRET="random-long-secret"   DEFAULT_ROLE="student"
 ```
+3) Deploy:
+```
+supabase functions deploy line-login
+```
+4) Production URL จะเป็น: `https://<project-ref>.functions.supabase.co/line-login`
+   - ตั้งค่าใน `js/config.js` ให้ `EDGE_LOGIN_ENDPOINT` ชี้ URL นี้ (หรือใช้ path `/functions/v1/line-login` หากโฮสต์ผ่าน Supabase Hosting เดียวกัน)
 
-## คุณสมบัติ
-- Auth: Login/Register ด้วย Supabase Auth (บทบาท teacher/student เก็บใน user_metadata)
-- ครู: สร้าง/แก้ไข/ลบข้อสอบ, เพิ่มคำถาม (MCQ/Matching/Fill Blank/True‑False), พิมพ์ใบงาน
-- นักเรียน: ทำข้อสอบแบบ Interactive พร้อมตัวจับเวลา, ส่งคำตอบ, แสดงผลทันที, ประวัติการทำ
-- Analytics: สถิติรายข้อ (Difficulty Index, Discrimination Index) + กราฟแท่งแบบง่าย
-- Print CSS: ปุ่มพิมพ์ใบงาน พิมพ์เฉลยได้ (ปรับ correct_answer ในฐานข้อมูล)
+## ตั้งค่า LINE Developers (LIFF)
+- ใช้ LIFF ID: `2006490627-xn8XaYD1`
+- ตั้ง endpoint URL ไปยังหน้าเว็บโปรเจกต์ของพี่ที่รัก (GitHub Pages/Custom Domain)
+- Domain ที่เรียก Functions ต้องอยู่ใน allowlist
 
-## การตั้งค่า Supabase
-1. สร้าง Project → ตั้งค่า Tables ตาม schema ที่ผู้ใช้กำหนด (ดูด้านล่าง)
-2. ไปที่ Project Settings → API → คัดลอก **Project URL** และ **anon public key**
-3. เปิดไฟล์ `js/config.js` แล้วแทนที่ค่า:
+## แก้ไขไฟล์ config ฝั่งเว็บ
+แก้ `js/config.js`:
 ```js
 export const SUPABASE_URL = "https://YOUR_PROJECT.supabase.co";
 export const SUPABASE_ANON_KEY = "YOUR_PUBLIC_ANON_KEY";
+export const LIFF_ID = "2006490627-xn8XaYD1";
+export const EDGE_LOGIN_ENDPOINT = "https://<project-ref>.functions.supabase.co/line-login";
 ```
-4. เปิดโฮสท์ด้วย GitHub Pages ได้ทันที (Static)
 
-## ตาราง (ตามที่กำหนด)
-- **users** (ใช้ Supabase Auth: user_metadata: { full_name, role, grade_level })
-- **subjects**: (id, name, name_en, icon)
-- **exams**: (id, title, subject_id, total_score, passing_score, time_limit, is_published)
-- **questions**: (id, exam_id, question_type, question_text, question_data TEXT, correct_answer TEXT, points INT)
-- **student_attempts**: (id, exam_id, student_id UUID, score, submitted_at TIMESTAMPTZ, time_spent INT)
-- **student_answers**: (id, attempt_id, question_id, answer_data TEXT, is_correct BOOL, points_earned INT)
-- **question_analytics**: (id, question_id UNIQUE, total_attempts, correct_attempts, difficulty_index NUMERIC, discrimination_index NUMERIC)
+## โครงไฟล์สำคัญ
+- `index.html` — เพิ่ม LIFF SDK และโหลดสคริปต์ SPA
+- `js/liff-login.js` — เรียก Edge Function → setSession
+- `functions/line-login/index.ts` — ตรวจ LINE token, upsert user, password sign-in
 
-> หมายเหตุ: ควรกำหนด Foreign Keys + Indexes ตามฟิลด์ id ที่อ้างอิงกัน และตั้ง RLS ให้เหมาะสม:
-- นักเรียน: อ่านเฉพาะข้อสอบที่ `is_published = true`, เขียนเฉพาะ attempt/answers ของตนเอง
-- ครู: จัดการ exams/questions/analytics ได้ (ใช้ policy ตาม role ใน user_metadata)
-
-## คำอธิบายการใช้งานโดยย่อ
-- เปิดหน้าเว็บ → ปุ่ม "เข้าสู่ระบบ" → login หรือ register
-- หากเป็น **ครู** → เมนู Teacher: สร้างข้อสอบ → เพิ่มคำถาม → พิมพ์ใบงานได้
-- หากเป็น **นักเรียน** → เมนู Student: เลือกข้อสอบ → ทำข้อสอบ → ส่งคำตอบ → แสดงคะแนน
-- เมนู Analytics (เฉพาะครู): เลือกข้อสอบ → ดูตาราง Difficulty/Discrimination + บันทึกลง `question_analytics`
-
-## หมายเหตุด้านเทคนิค
-- ไม่ใช้ localStorage/sessionStorage ตามข้อกำหนด (ทุกอย่างอาศัย Supabase)
-- ใช้ ES6 Modules + async/await + error handling ใน api.js
-- UI เป็น mobile-first และรองรับการพิมพ์ด้วย `@media print`
-- สามารถต่อยอดเพิ่ม Drag‑Drop สำหรับ Matching ได้ภายหลัง (ตอนนี้ใช้ dropdown)
-
----
-สร้างโดยที่รัก 🤍
+> หมายเหตุด้านความปลอดภัย: ห้ามเปิดเผย `SERVICE_ROLE` หรือ `EDGE_HMAC_SECRET` ฝั่งไคลเอนต์เด็ดขาด (อยู่เฉพาะใน Functions secrets เท่านั้น)
