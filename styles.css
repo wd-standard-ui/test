@@ -1,0 +1,15 @@
+/* styles.css */
+:root { --paper: #ffffff; --ink: #0f172a; }
+@media (prefers-color-scheme: dark) {
+  :root { --paper: #0b1020; --ink: #e2e8f0; }
+}
+body { background: #f8fafc; color: var(--ink); }
+
+/* Print styles */
+@media print {
+  .no-print { display: none !important; }
+  .print-only { display: block !important; }
+  body { background: white; color: black; }
+  .page-break { page-break-after: always; }
+  .a4 { width: 210mm; min-height: 297mm; }
+}

@@ -1,36 +1,77 @@
 <!DOCTYPE html>
-<html lang="th">
+<html lang="th" data-theme="light">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>IEM — LINE Login via Edge Function</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <script>tailwind.config={theme:{extend:{fontFamily:{sans:['Kanit','system-ui','sans-serif']}}}}</script>
-  <link rel="stylesheet" href="./css/styles.css" />
-  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <script type="module" src="./js/app.js"></script>
-</head>
-<body class="bg-gray-50 text-gray-900">
-  <div id="toastContainer" class="fixed top-4 right-4 space-y-2 z-50"></div>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+  <title>Interactive Exam Management — WD</title>
 
-  <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-gray-200">
-    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <span class="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-blue-100 text-blue-600">📝</span>
-        <h1 class="text-lg font-semibold">IEM — LINE Login</h1>
+  <!-- Tailwind via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Kanit','system-ui','sans-serif'] },
+          colors: {
+            math: '#3B82F6', // Blue
+            eng: '#EF4444',  // Red
+            thai: '#10B981'  // Green
+          },
+          boxShadow: { card: '0 10px 24px rgba(0,0,0,.08)' }
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Chart.js for analytics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+
+  <!-- Supabase UMD -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+umd"></script>
+
+  <!-- LIFF SDK -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen font-sans">
+  <!-- Top Bar -->
+  <header class="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <img src="./assets/icon.svg" class="w-8 h-8" alt="icon"/>
+        <div class="font-bold text-lg">WD • Interactive Exam</div>
+        <span id="envBadge" class="ml-3 text-xs px-2 py-1 rounded bg-slate-100 text-slate-600"></span>
       </div>
       <div class="flex items-center gap-2">
-        <span id="userBadge" class="text-sm text-gray-600 hidden"></span>
-        <button id="btnLineLogin" class="px-3 py-1.5 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">Login with LINE</button>
-        <button id="btnLogout" class="px-3 py-1.5 text-sm rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-800 hidden">ออกจากระบบ</button>
+        <span id="userBadge" class="text-sm text-slate-600 hidden"></span>
+        <button id="btnLogin" class="no-print px-3 py-1.5 rounded bg-slate-900 text-white text-sm hidden">เข้าสู่ระบบ</button>
+        <button id="btnLogout" class="no-print px-3 py-1.5 rounded bg-slate-100 text-slate-700 text-sm hidden">ออกจากระบบ</button>
       </div>
     </div>
   </header>
 
-  <main class="max-w-5xl mx-auto px-4 py-6">
-    <div id="app"></div>
+  <!-- Main -->
+  <main id="app" class="max-w-6xl mx-auto px-4 py-6">
+    <!-- Route outlet -->
   </main>
+
+  <!-- Toasts -->
+  <div id="toastRoot" class="fixed bottom-4 left-1/2 -translate-x-1/2 space-y-2 z-50"></div>
+
+  <!-- Dialog root (for modals if needed) -->
+  <div id="dialogRoot"></div>
+
+  <!-- Config & App Scripts (ESM modules where applicable) -->
+  <script type="module" src="./config.js"></script>
+  <script type="module" src="./ui.js"></script>
+  <script type="module" src="./db.js"></script>
+  <script type="module" src="./auth.js"></script>
+  <script type="module" src="./teacher.js"></script>
+  <script type="module" src="./student.js"></script>
+  <script type="module" src="./app.js"></script>
 </body>
 </html>
