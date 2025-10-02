@@ -1,96 +1,2013 @@
 <!DOCTYPE html>
-<html lang="th" data-theme="light">
+<html lang="th">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <title>Interactive Exam Management System — WD School</title>
-
-  <!-- Tailwind (CDN) -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบจัดการข้อสอบออนไลน์</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
+    
+    * {
+      font-family: 'Sarabun', sans-serif;
+    }
+    
+    /* Print Styles */
+    @media print {
+      .no-print {
+        display: none !important;
+      }
+      .print-only {
+        display: block !important;
+      }
+      body {
+        background: white !important;
+        color: black !important;
+      }
+      .page-break {
+        page-break-after: always;
+      }
+      .question {
+        page-break-inside: avoid;
+      }
+      @page {
+        size: A4;
+        margin: 2cm;
+      }
+    }
+    
+    .print-only {
+      display: none;
+    }
+    
+    /* Custom Animations */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .fade-in {
+      animation: fadeIn 0.3s ease-out;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .pulse-animation {
+      animation: pulse 2s ease-in-out infinite;
+    }
+    
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+      background: #888;
+      border-radius: 4px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+      background: #555;
+    }
+    
+    /* Timer Warning */
+    .timer-warning {
+      animation: pulse 1s ease-in-out infinite;
+      color: #ef4444;
+    }
+    
+    /* Question Navigation */
+    .q-btn {
+      min-width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    
+    .q-btn.completed {
+      background: #3b82f6;
+      color: white;
+    }
+    
+    .q-btn.current {
+      background: #10b981;
+      color: white;
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.3);
+    }
+    
+    /* Choice Hover Effect */
+    .choice-item {
+      transition: all 0.2s;
+    }
+    
+    .choice-item:hover {
+      transform: translateX(4px);
+    }
+    
+    .choice-item.correct {
+      background: #d1fae5 !important;
+      border-color: #10b981 !important;
+    }
+    
+    .choice-item.incorrect {
+      background: #fee2e2 !important;
+      border-color: #ef4444 !important;
+    }
+    
+    /* Toast Notification */
+    .toast {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 16px 24px;
+      border-radius: 8px;
+      color: white;
+      font-weight: 500;
+      z-index: 9999;
+      animation: slideIn 0.3s ease-out;
+    }
+    
+    @keyframes slideIn {
+      from { transform: translateX(400px); }
+      to { transform: translateX(0); }
+    }
+    
+    .toast.success { background: #10b981; }
+    .toast.error { background: #ef4444; }
+    .toast.warning { background: #f59e0b; }
+    .toast.info { background: #3b82f6; }
+  </style>
+</head>
+<body class="bg-gray-50">
+  
+  <!-- Toast Container -->
+  <div id="toastContainer"></div>
+  
+  <!-- Main App Container -->
+  <div id="app"></div>
+
   <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: { sans: ['Kanit','system-ui','sans-serif'] },
-          colors: {
-            math: '#3B82F6',    /* คณิตศาสตร์ */
-            eng:  '#EF4444',    /* ภาษาอังกฤษ */
-            thai: '#10B981'     /* ภาษาไทย */
-          },
-          boxShadow: {
-            card: '0 12px 28px rgba(0,0,0,.08)'
+    // ============================================
+    // 🔧 Configuration & Initialization
+    // ============================================
+    
+    // ⚠️ แทนที่ด้วย Supabase credentials ของคุณ
+    const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+    
+    // Initialize Supabase Client
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    
+    // ============================================
+    // 📦 State Management
+    // ============================================
+    
+    const state = {
+      currentUser: null,
+      currentView: 'login',
+      currentExam: null,
+      currentAttempt: null,
+      questions: [],
+      answers: {},
+      timer: null,
+      timeRemaining: 0,
+      examList: [],
+      studentAttempts: [],
+      analytics: null
+    };
+    
+    // ============================================
+    // 🛠️ Utility Functions
+    // ============================================
+    
+    // แสดง Toast Notification
+    function showToast(message, type = 'info') {
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.textContent = message;
+      document.getElementById('toastContainer').appendChild(toast);
+      
+      setTimeout(() => {
+        toast.remove();
+      }, 3000);
+    }
+    
+    // Format เวลา (วินาที -> HH:MM:SS)
+    function formatTime(seconds) {
+      const hrs = Math.floor(seconds / 3600);
+      const mins = Math.floor((seconds % 3600) / 60);
+      const secs = seconds % 60;
+      
+      if (hrs > 0) {
+        return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      }
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+    
+    // Format วันที่
+    function formatDate(dateString) {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('th-TH', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+    
+    // ============================================
+    // 🔐 Authentication Functions
+    // ============================================
+    
+    async function login(email, password) {
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
+        
+        if (error) throw error;
+        
+        // ดึงข้อมูล user profile
+        const { data: profile } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', data.user.id)
+          .single();
+        
+        state.currentUser = { ...data.user, ...profile };
+        showToast('เข้าสู่ระบบสำเร็จ!', 'success');
+        
+        // Redirect ตามบทบาท
+        if (state.currentUser.role === 'teacher') {
+          navigateTo('teacher-dashboard');
+        } else {
+          navigateTo('student-dashboard');
+        }
+        
+      } catch (error) {
+        showToast('เข้าสู่ระบบไม่สำเร็จ: ' + error.message, 'error');
+      }
+    }
+    
+    async function register(email, password, fullName, role, gradeLevel) {
+      try {
+        // สร้าง auth user
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email,
+          password
+        });
+        
+        if (authError) throw authError;
+        
+        // สร้าง profile
+        const { error: profileError } = await supabase
+          .from('users')
+          .insert([{
+            id: authData.user.id,
+            email,
+            full_name: fullName,
+            role,
+            grade_level: gradeLevel
+          }]);
+        
+        if (profileError) throw profileError;
+        
+        showToast('สมัครสมาชิกสำเร็จ! กรุณาเข้าสู่ระบบ', 'success');
+        navigateTo('login');
+        
+      } catch (error) {
+        showToast('สมัครสมาชิกไม่สำเร็จ: ' + error.message, 'error');
+      }
+    }
+    
+    async function logout() {
+      await supabase.auth.signOut();
+      state.currentUser = null;
+      state.currentView = 'login';
+      showToast('ออกจากระบบแล้ว', 'info');
+      render();
+    }
+    
+    // ============================================
+    // 📚 Exam Management Functions
+    // ============================================
+    
+    async function loadExams() {
+      try {
+        let query = supabase
+          .from('exams')
+          .select('*, subjects(name, name_en)');
+        
+        // นักเรียนเห็นเฉพาะข้อสอบที่เผยแพร่
+        if (state.currentUser.role === 'student') {
+          query = query.eq('is_published', true);
+        } else {
+          // ครูเห็นเฉพาะข้อสอบที่ตัวเองสร้าง
+          query = query.eq('created_by', state.currentUser.id);
+        }
+        
+        const { data, error } = await query.order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        
+        state.examList = data || [];
+        
+      } catch (error) {
+        showToast('โหลดข้อสอบไม่สำเร็จ: ' + error.message, 'error');
+      }
+    }
+    
+    async function loadQuestions(examId) {
+      try {
+        const { data, error } = await supabase
+          .from('questions')
+          .select('*')
+          .eq('exam_id', examId)
+          .order('question_number');
+        
+        if (error) throw error;
+        
+        state.questions = data || [];
+        
+      } catch (error) {
+        showToast('โหลดคำถามไม่สำเร็จ: ' + error.message, 'error');
+      }
+    }
+    
+    async function saveExam(examData) {
+      try {
+        const { data, error } = await supabase
+          .from('exams')
+          .insert([{
+            ...examData,
+            created_by: state.currentUser.id
+          }])
+          .select()
+          .single();
+        
+        if (error) throw error;
+        
+        showToast('บันทึกข้อสอบสำเร็จ!', 'success');
+        return data;
+        
+      } catch (error) {
+        showToast('บันทึกข้อสอบไม่สำเร็จ: ' + error.message, 'error');
+        return null;
+      }
+    }
+    
+    async function saveQuestions(examId, questions) {
+      try {
+        const questionsData = questions.map((q, index) => ({
+          exam_id: examId,
+          question_number: index + 1,
+          question_type_id: q.type,
+          question_text: q.text,
+          question_data: q.data,
+          correct_answer: q.answer,
+          points: q.points || 1,
+          explanation: q.explanation || '',
+          difficulty_level: q.difficulty || 'medium'
+        }));
+        
+        const { error } = await supabase
+          .from('questions')
+          .insert(questionsData);
+        
+        if (error) throw error;
+        
+        showToast('บันทึกคำถามสำเร็จ!', 'success');
+        
+      } catch (error) {
+        showToast('บันทึกคำถามไม่สำเร็จ: ' + error.message, 'error');
+      }
+    }
+    
+    // ============================================
+    // 📝 Student Exam Functions
+    // ============================================
+    
+    async function startExam(examId) {
+      try {
+        // สร้าง attempt ใหม่
+        const { data, error } = await supabase
+          .from('student_attempts')
+          .insert([{
+            exam_id: examId,
+            student_id: state.currentUser.id,
+            status: 'in_progress'
+          }])
+          .select()
+          .single();
+        
+        if (error) throw error;
+        
+        state.currentAttempt = data;
+        
+        // โหลดข้อสอบและคำถาม
+        const { data: exam } = await supabase
+          .from('exams')
+          .select('*, subjects(name)')
+          .eq('id', examId)
+          .single();
+        
+        state.currentExam = exam;
+        await loadQuestions(examId);
+        
+        // เริ่ม Timer
+        state.timeRemaining = exam.time_limit * 60; // แปลงนาทีเป็นวินาที
+        startTimer();
+        
+        navigateTo('take-exam');
+        
+      } catch (error) {
+        showToast('เริ่มทำข้อสอบไม่สำเร็จ: ' + error.message, 'error');
+      }
+    }
+    
+    function startTimer() {
+      if (state.timer) clearInterval(state.timer);
+      
+      state.timer = setInterval(() => {
+        state.timeRemaining--;
+        
+        // อัปเดต UI
+        const timerEl = document.getElementById('timer');
+        if (timerEl) {
+          timerEl.textContent = formatTime(state.timeRemaining);
+          
+          // เปลี่ยนสีเมื่อเวลาใกล้หมด
+          if (state.timeRemaining < 300) { // น้อยกว่า 5 นาที
+            timerEl.classList.add('timer-warning');
           }
         }
+        
+        // หมดเวลา - ส่งข้อสอบอัตโนมัติ
+        if (state.timeRemaining <= 0) {
+          clearInterval(state.timer);
+          submitExam();
+        }
+      }, 1000);
+    }
+    
+    function saveAnswer(questionId, answer) {
+      state.answers[questionId] = answer;
+      
+      // อัปเดต progress
+      updateProgress();
+    }
+    
+    function updateProgress() {
+      const totalQuestions = state.questions.length;
+      const answeredCount = Object.keys(state.answers).length;
+      const percentage = (answeredCount / totalQuestions) * 100;
+      
+      const progressBar = document.getElementById('progressBar');
+      const progressText = document.getElementById('progressText');
+      
+      if (progressBar) {
+        progressBar.style.width = `${percentage}%`;
       }
-    };
+      
+      if (progressText) {
+        progressText.textContent = `${answeredCount}/${totalQuestions} ข้อ (${percentage.toFixed(0)}%)`;
+      }
+    }
+    
+    async function submitExam() {
+      if (!confirm('คุณต้องการส่งข้อสอบใช่หรือไม่?')) {
+        return;
+      }
+      
+      clearInterval(state.timer);
+      
+      try {
+        // คำนวณคะแนน
+        let totalScore = 0;
+        const studentAnswers = [];
+        
+        for (const question of state.questions) {
+          const answer = state.answers[question.id];
+          const isCorrect = checkAnswer(question, answer);
+          const points = isCorrect ? question.points : 0;
+          
+          totalScore += points;
+          
+          studentAnswers.push({
+            attempt_id: state.currentAttempt.id,
+            question_id: question.id,
+            answer_data: answer,
+            is_correct: isCorrect,
+            points_earned: points
+          });
+        }
+        
+        // บันทึกคำตอบ
+        await supabase
+          .from('student_answers')
+          .insert(studentAnswers);
+        
+        // อัปเดต attempt
+        const timeSpent = (state.currentExam.time_limit * 60) - state.timeRemaining;
+        const percentage = (totalScore / state.currentExam.total_score) * 100;
+        
+        await supabase
+          .from('student_attempts')
+          .update({
+            submitted_at: new Date().toISOString(),
+            score: totalScore,
+            total_points: state.currentExam.total_score,
+            percentage: percentage,
+            time_spent: timeSpent,
+            status: 'submitted'
+          })
+          .eq('id', state.currentAttempt.id);
+        
+        // อัปเดต analytics
+        await updateQuestionAnalytics(state.currentExam.id);
+        
+        showToast('ส่งข้อสอบสำเร็จ!', 'success');
+        
+        // แสดงผลคะแนน
+        navigateTo('exam-result', { score: totalScore, percentage });
+        
+      } catch (error) {
+        showToast('ส่งข้อสอบไม่สำเร็จ: ' + error.message, 'error');
+      }
+    }
+    
+    function checkAnswer(question, studentAnswer) {
+      if (!studentAnswer) return false;
+      
+      const correctAnswer = question.correct_answer;
+      
+      // ตรวจตามประเภทคำถาม
+      if (question.question_type_id === 'multiple_choice' || question.question_type_id === 'true_false') {
+        return studentAnswer === correctAnswer;
+      }
+      
+      if (question.question_type_id === 'fill_blank') {
+        // รองรับหลายคำตอบที่ถูก (case-insensitive)
+        const correctAnswers = Array.isArray(correctAnswer) ? correctAnswer : [correctAnswer];
+        return correctAnswers.some(ans => 
+          ans.toLowerCase().trim() === studentAnswer.toLowerCase().trim()
+        );
+      }
+      
+      if (question.question_type_id === 'matching') {
+        // เช็คว่าจับคู่ถูกทุกคู่
+        return JSON.stringify(studentAnswer) === JSON.stringify(correctAnswer);
+      }
+      
+      return false;
+    }
+    
+    // ============================================
+    // 📊 Analytics Functions
+    // ============================================
+    
+    async function updateQuestionAnalytics(examId) {
+      try {
+        const { data: attempts } = await supabase
+          .from('student_attempts')
+          .select('id, student_answers(question_id, is_correct)')
+          .eq('exam_id', examId)
+          .eq('status', 'submitted');
+        
+        const questionStats = {};
+        
+        // รวมข้อมูล
+        attempts.forEach(attempt => {
+          attempt.student_answers.forEach(answer => {
+            if (!questionStats[answer.question_id]) {
+              questionStats[answer.question_id] = {
+                total: 0,
+                correct: 0
+              };
+            }
+            questionStats[answer.question_id].total++;
+            if (answer.is_correct) {
+              questionStats[answer.question_id].correct++;
+            }
+          });
+        });
+        
+        // คำนวณและบันทึก
+        for (const [questionId, stats] of Object.entries(questionStats)) {
+          const difficultyIndex = stats.correct / stats.total;
+          
+          await supabase
+            .from('question_analytics')
+            .upsert({
+              question_id: questionId,
+              total_attempts: stats.total,
+              correct_attempts: stats.correct,
+              difficulty_index: difficultyIndex
+            });
+        }
+        
+      } catch (error) {
+        console.error('Update analytics error:', error);
+      }
+    }
+    
+    async function loadAnalytics(examId) {
+      try {
+        // โหลดข้อมูลการทำข้อสอบ
+        const { data: attempts } = await supabase
+          .from('student_attempts')
+          .select('*, users(full_name), student_answers(*)')
+          .eq('exam_id', examId)
+          .eq('status', 'submitted');
+        
+        // โหลด analytics ของคำถาม
+        const { data: questionAnalytics } = await supabase
+          .from('question_analytics')
+          .select('*, questions(*)')
+          .in('question_id', state.questions.map(q => q.id));
+        
+        state.analytics = {
+          attempts,
+          questionAnalytics,
+          avgScore: attempts.reduce((sum, a) => sum + a.score, 0) / attempts.length || 0,
+          maxScore: Math.max(...attempts.map(a => a.score), 0),
+          minScore: Math.min(...attempts.map(a => a.score), 999),
+          passRate: (attempts.filter(a => a.percentage >= state.currentExam.passing_score).length / attempts.length * 100) || 0
+        };
+        
+      } catch (error) {
+        showToast('โหลดข้อมูลวิเคราะห์ไม่สำเร็จ: ' + error.message, 'error');
+      }
+    }
+    
+    // ============================================
+    // 🎨 UI Components
+    // ============================================
+    
+    function LoginPage() {
+      return `
+        <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-600 p-4">
+          <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 fade-in">
+            <h1 class="text-3xl font-bold text-center mb-2 text-gray-800">📚 ระบบจัดการข้อสอบ</h1>
+            <p class="text-center text-gray-600 mb-8">ยินดีต้อนรับสู่ระบบ</p>
+            
+            <div class="mb-6">
+              <div class="flex border-b border-gray-200">
+                <button onclick="switchAuthTab('login')" id="loginTab" class="flex-1 py-3 text-center font-semibold border-b-2 border-blue-500 text-blue-500">เข้าสู่ระบบ</button>
+                <button onclick="switchAuthTab('register')" id="registerTab" class="flex-1 py-3 text-center font-semibold text-gray-500">สมัครสมาชิก</button>
+              </div>
+            </div>
+            
+            <!-- Login Form -->
+            <div id="loginForm">
+              <form onsubmit="handleLogin(event)" class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">อีเมล</label>
+                  <input type="email" id="loginEmail" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="example@email.com">
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">รหัสผ่าน</label>
+                  <input type="password" id="loginPassword" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="••••••••">
+                </div>
+                
+                <button type="submit" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 rounded-lg transition duration-200">
+                  เข้าสู่ระบบ
+                </button>
+              </form>
+            </div>
+            
+            <!-- Register Form -->
+            <div id="registerForm" class="hidden">
+              <form onsubmit="handleRegister(event)" class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">ชื่อ-นามสกุล</label>
+                  <input type="text" id="regFullName" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">อีเมล</label>
+                  <input type="email" id="regEmail" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">รหัสผ่าน</label>
+                  <input type="password" id="regPassword" required minlength="6" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">บทบาท</label>
+                  <select id="regRole" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <option value="">เลือกบทบาท</option>
+                    <option value="student">นักเรียน</option>
+                    <option value="teacher">ครู</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">ระดับชั้น (สำหรับนักเรียน)</label>
+                  <select id="regGrade" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <option value="">ไม่ระบุ</option>
+                    <option value="ป.1">ป.1</option>
+                    <option value="ป.2">ป.2</option>
+                    <option value="ป.3">ป.3</option>
+                    <option value="ป.4">ป.4</option>
+                    <option value="ป.5">ป.5</option>
+                    <option value="ป.6">ป.6</option>
+                    <option value="ม.1">ม.1</option>
+                    <option value="ม.2">ม.2</option>
+                    <option value="ม.3">ม.3</option>
+                  </select>
+                </div>
+                
+                <button type="submit" class="w-full bg-purple-500 hover:bg-purple-600 text-white font-semibold py-3 rounded-lg transition duration-200">
+                  สมัครสมาชิก
+                </button>
+              </form>
+            </div>
+            
+            <p class="text-center text-sm text-gray-500 mt-6">
+              🔒 ข้อมูลของคุณปลอดภัยกับเรา
+            </p>
+          </div>
+        </div>
+      `;
+    }
+    
+    function TeacherDashboard() {
+      return `
+        <div class="min-h-screen bg-gray-50">
+          <!-- Navbar -->
+          <nav class="bg-white shadow-sm no-print">
+            <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+              <div class="flex items-center space-x-4">
+                <h1 class="text-2xl font-bold text-gray-800">👨‍🏫 ครู: ${state.currentUser.full_name}</h1>
+              </div>
+              <button onclick="logout()" class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition">
+                ออกจากระบบ
+              </button>
+            </div>
+          </nav>
+          
+          <div class="max-w-7xl mx-auto px-4 py-8">
+            <!-- Action Buttons -->
+            <div class="mb-8 flex space-x-4">
+              <button onclick="navigateTo('create-exam')" class="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold">
+                ➕ สร้างข้อสอบใหม่
+              </button>
+            </div>
+            
+            <!-- Exam List -->
+            <div class="bg-white rounded-xl shadow-sm p-6">
+              <h2 class="text-xl font-bold mb-6">📋 ข้อสอบทั้งหมด</h2>
+              
+              <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6" id="examListContainer">
+                ${state.examList.length === 0 ? `
+                  <div class="col-span-full text-center py-12 text-gray-500">
+                    ยังไม่มีข้อสอบ กรุณาสร้างข้อสอบใหม่
+                  </div>
+                ` : state.examList.map(exam => `
+                  <div class="border border-gray-200 rounded-lg p-6 hover:shadow-lg transition fade-in">
+                    <div class="flex items-center justify-between mb-4">
+                      <span class="px-3 py-1 bg-${getSubjectColor(exam.subjects?.name_en)}-100 text-${getSubjectColor(exam.subjects?.name_en)}-700 rounded-full text-sm font-semibold">
+                        ${exam.subjects?.name || 'ไม่ระบุวิชา'}
+                      </span>
+                      <span class="text-xs ${exam.is_published ? 'text-green-600' : 'text-gray-500'}">
+                        ${exam.is_published ? '✓ เผยแพร่แล้ว' : '○ ร่าง'}
+                      </span>
+                    </div>
+                    
+                    <h3 class="text-lg font-bold text-gray-800 mb-2">${exam.title}</h3>
+                    <p class="text-sm text-gray-600 mb-4">${exam.description || 'ไม่มีคำอธิบาย'}</p>
+                    
+                    <div class="space-y-2 text-sm text-gray-600 mb-4">
+                      <div>📊 คะแนนรวม: ${exam.total_score} คะแนน</div>
+                      <div>⏱️ เวลา: ${exam.time_limit} นาที</div>
+                      <div>✅ เกณฑ์ผ่าน: ${exam.passing_score}%</div>
+                    </div>
+                    
+                    <div class="flex space-x-2">
+                      <button onclick="viewAnalytics('${exam.id}')" class="flex-1 px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 transition text-sm">
+                        📊 วิเคราะห์
+                      </button>
+                      <button onclick="editExam('${exam.id}')" class="flex-1 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition text-sm">
+                        ✏️ แก้ไข
+                      </button>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    
+    function CreateExamPage() {
+      return `
+        <div class="min-h-screen bg-gray-50">
+          <nav class="bg-white shadow-sm no-print">
+            <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+              <h1 class="text-2xl font-bold text-gray-800">➕ สร้างข้อสอบใหม่</h1>
+              <button onclick="navigateTo('teacher-dashboard')" class="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition">
+                ← กลับ
+              </button>
+            </div>
+          </nav>
+          
+          <div class="max-w-4xl mx-auto px-4 py-8">
+            <form onsubmit="handleCreateExam(event)" class="space-y-6">
+              <!-- Basic Info -->
+              <div class="bg-white rounded-xl shadow-sm p-6">
+                <h2 class="text-xl font-bold mb-6">📝 ข้อมูลพื้นฐาน</h2>
+                
+                <div class="space-y-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">ชื่อข้อสอบ *</label>
+                    <input type="text" id="examTitle" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                  </div>
+                  
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">คำอธิบาย</label>
+                    <textarea id="examDescription" rows="3" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
+                  </div>
+                  
+                  <div class="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">วิชา *</label>
+                      <select id="examSubject" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="">เลือกวิชา</option>
+                        <option value="math">คณิตศาสตร์</option>
+                        <option value="english">ภาษาอังกฤษ</option>
+                        <option value="thai">ภาษาไทย</option>
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">ระดับชั้น</label>
+                      <select id="examGrade" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="">เลือกระดับชั้น</option>
+                        <option value="ป.1-3">ป.1-3</option>
+                        <option value="ป.4-6">ป.4-6</option>
+                        <option value="ม.1-3">ม.1-3</option>
+                      </select>
+                    </div>
+                  </div>
+                  
+                  <div class="grid md:grid-cols-3 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">คะแนนรวม *</label>
+                      <input type="number" id="examTotalScore" required min="1" value="100" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">เกณฑ์ผ่าน (%) *</label>
+                      <input type="number" id="examPassingScore" required min="0" max="100" value="60" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">เวลา (นาที) *</label>
+                      <input type="number" id="examTimeLimit" required min="1" value="60" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Questions -->
+              <div class="bg-white rounded-xl shadow-sm p-6">
+                <div class="flex justify-between items-center mb-6">
+                  <h2 class="text-xl font-bold">❓ คำถาม</h2>
+                  <button type="button" onclick="openQuestionModal()" class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition">
+                    ➕ เพิ่มคำถาม
+                  </button>
+                </div>
+                
+                <div id="questionList" class="space-y-4">
+                  <div class="text-center py-8 text-gray-500">
+                    ยังไม่มีคำถาม กรุณาเพิ่มคำถาม
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Submit Buttons -->
+              <div class="flex space-x-4">
+                <button type="submit" class="flex-1 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold">
+                  💾 บันทึกและเผยแพร่
+                </button>
+                <button type="button" onclick="saveDraft()" class="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition">
+                  📝 บันทึกร่าง
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+        
+        <!-- Question Modal -->
+        <div id="questionModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div class="flex justify-between items-center mb-6">
+              <h3 class="text-xl font-bold">เพิ่มคำถาม</h3>
+              <button onclick="closeQuestionModal()" class="text-gray-500 hover:text-gray-700 text-2xl">×</button>
+            </div>
+            
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">ประเภทคำถาม</label>
+                <select id="questionType" onchange="updateQuestionForm()" class="w-full px-4 py-3 border border-gray-300 rounded-lg">
+                  <option value="multiple_choice">กาบาท (Multiple Choice)</option>
+                  <option value="matching">จับคู่ (Matching)</option>
+                  <option value="fill_blank">เติมคำ (Fill in the Blank)</option>
+                  <option value="true_false">ถูก/ผิด (True/False)</option>
+                </select>
+              </div>
+              
+              <div id="questionFormContainer">
+                <!-- Dynamic form will be inserted here -->
+              </div>
+              
+              <div class="flex space-x-4">
+                <button onclick="addQuestion()" class="flex-1 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition">
+                  เพิ่มคำถาม
+                </button>
+                <button onclick="closeQuestionModal()" class="px-6 py-3 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition">
+                  ยกเลิก
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    
+    function StudentDashboard() {
+      return `
+        <div class="min-h-screen bg-gray-50">
+          <nav class="bg-white shadow-sm no-print">
+            <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+              <div class="flex items-center space-x-4">
+                <h1 class="text-2xl font-bold text-gray-800">👨‍🎓 นักเรียน: ${state.currentUser.full_name}</h1>
+                ${state.currentUser.grade_level ? `<span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">${state.currentUser.grade_level}</span>` : ''}
+              </div>
+              <button onclick="logout()" class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition">
+                ออกจากระบบ
+              </button>
+            </div>
+          </nav>
+          
+          <div class="max-w-7xl mx-auto px-4 py-8">
+            <div class="bg-white rounded-xl shadow-sm p-6">
+              <h2 class="text-xl font-bold mb-6">📚 ข้อสอบที่เปิดให้ทำ</h2>
+              
+              <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                ${state.examList.length === 0 ? `
+                  <div class="col-span-full text-center py-12 text-gray-500">
+                    ยังไม่มีข้อสอบที่เปิดให้ทำ
+                  </div>
+                ` : state.examList.map(exam => `
+                  <div class="border border-gray-200 rounded-lg p-6 hover:shadow-lg transition fade-in">
+                    <div class="mb-4">
+                      <span class="px-3 py-1 bg-${getSubjectColor(exam.subjects?.name_en)}-100 text-${getSubjectColor(exam.subjects?.name_en)}-700 rounded-full text-sm font-semibold">
+                        ${exam.subjects?.name || 'ไม่ระบุวิชา'}
+                      </span>
+                    </div>
+                    
+                    <h3 class="text-lg font-bold text-gray-800 mb-2">${exam.title}</h3>
+                    <p class="text-sm text-gray-600 mb-4">${exam.description || 'ไม่มีคำอธิบาย'}</p>
+                    
+                    <div class="space-y-2 text-sm text-gray-600 mb-4">
+                      <div>📊 คะแนนรวม: ${exam.total_score} คะแนน</div>
+                      <div>⏱️ เวลา: ${exam.time_limit} นาที</div>
+                      <div>✅ เกณฑ์ผ่าน: ${exam.passing_score}%</div>
+                    </div>
+                    
+                    <button onclick="startExam('${exam.id}')" class="w-full px-4 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition font-semibold">
+                      🎯 เริ่มทำข้อสอบ
+                    </button>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+            
+            <!-- History -->
+            <div class="bg-white rounded-xl shadow-sm p-6 mt-8">
+              <h2 class="text-xl font-bold mb-6">📜 ประวัติการทำข้อสอบ</h2>
+              <div class="overflow-x-auto">
+                <table class="w-full">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">ข้อสอบ</th>
+                      <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">คะแนน</th>
+                      <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">ผลลัพธ์</th>
+                      <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">วันที่</th>
+                    </tr>
+                  </thead>
+                  <tbody id="historyTableBody">
+                    <tr>
+                      <td colspan="4" class="px-4 py-8 text-center text-gray-500">
+                        ยังไม่มีประวัติการทำข้อสอบ
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    
+    function TakeExamPage() {
+      const currentQuestionIndex = state.currentQuestionIndex || 0;
+      const question = state.questions[currentQuestionIndex];
+      
+      return `
+        <div class="min-h-screen bg-gray-50">
+          <!-- Header -->
+          <div class="bg-white shadow-sm no-print sticky top-0 z-10">
+            <div class="max-w-7xl mx-auto px-4 py-4">
+              <div class="flex justify-between items-center mb-4">
+                <h1 class="text-xl font-bold text-gray-800">${state.currentExam.title}</h1>
+                <div class="flex items-center space-x-6">
+                  <div class="text-center">
+                    <div id="timer" class="text-2xl font-bold text-blue-600">${formatTime(state.timeRemaining)}</div>
+                    <div class="text-xs text-gray-600">เวลาคงเหลือ</div>
+                  </div>
+                  <button onclick="if(confirm('ต้องการส่งข้อสอบใช่หรือไม่?')) submitExam()" class="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition font-semibold">
+                    ส่งข้อสอบ
+                  </button>
+                </div>
+              </div>
+              
+              <!-- Progress -->
+              <div>
+                <div class="flex justify-between text-sm text-gray-600 mb-2">
+                  <span id="progressText">0/${state.questions.length} ข้อ (0%)</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                  <div id="progressBar" class="bg-blue-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="max-w-4xl mx-auto px-4 py-8">
+            <!-- Question Navigation -->
+            <div class="bg-white rounded-xl shadow-sm p-6 mb-6 no-print">
+              <div class="flex flex-wrap gap-2">
+                ${state.questions.map((q, index) => `
+                  <button onclick="goToQuestion(${index})" class="q-btn ${state.answers[q.id] ? 'completed' : ''} ${index === currentQuestionIndex ? 'current' : 'bg-gray-200 hover:bg-gray-300'}">
+                    ${index + 1}
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+            
+            <!-- Question Card -->
+            <div class="bg-white rounded-xl shadow-sm p-8">
+              ${renderQuestion(question, currentQuestionIndex)}
+            </div>
+            
+            <!-- Navigation Buttons -->
+            <div class="flex justify-between mt-6 no-print">
+              <button onclick="previousQuestion()" ${currentQuestionIndex === 0 ? 'disabled' : ''} class="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                ← ข้อก่อนหน้า
+              </button>
+              <button onclick="nextQuestion()" ${currentQuestionIndex === state.questions.length - 1 ? 'disabled' : ''} class="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                ข้อถัดไป →
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    
+    function renderQuestion(question, index) {
+      if (!question) return '<div class="text-center text-gray-500">ไม่พบคำถาม</div>';
+      
+      const questionData = typeof question.question_data === 'string' ? JSON.parse(question.question_data) : question.question_data;
+      
+      let content = `
+        <div class="mb-6">
+          <div class="text-sm text-gray-500 mb-2">ข้อที่ ${index + 1} (${question.points} คะแนน)</div>
+          <h3 class="text-lg font-semibold text-gray-800 mb-6">${question.question_text}</h3>
+        </div>
+      `;
+      
+      // Render based on question type
+      if (question.question_type_id === 'multiple_choice') {
+        content += `
+          <div class="space-y-3">
+            ${questionData.choices.map((choice, i) => `
+              <label class="choice-item flex items-center p-4 border-2 border-gray-200 rounded-lg hover:border-blue-300 cursor-pointer transition">
+                <input type="radio" name="q${question.id}" value="${choice.id}" 
+                  ${state.answers[question.id] === choice.id ? 'checked' : ''}
+                  onchange="saveAnswer('${question.id}', '${choice.id}')" 
+                  class="mr-4 w-5 h-5">
+                <span class="text-gray-700">${String.fromCharCode(65 + i)}. ${choice.text}</span>
+              </label>
+            `).join('')}
+          </div>
+        `;
+      } else if (question.question_type_id === 'true_false') {
+        content += `
+          <div class="flex justify-center space-x-6">
+            <button onclick="saveAnswer('${question.id}', true); render()" 
+              class="px-12 py-6 ${state.answers[question.id] === true ? 'bg-green-500' : 'bg-gray-200'} text-white rounded-xl hover:bg-green-400 transition text-xl font-bold">
+              ✓ ถูก
+            </button>
+            <button onclick="saveAnswer('${question.id}', false); render()" 
+              class="px-12 py-6 ${state.answers[question.id] === false ? 'bg-red-500' : 'bg-gray-200'} text-white rounded-xl hover:bg-red-400 transition text-xl font-bold">
+              ✗ ผิด
+            </button>
+          </div>
+        `;
+      } else if (question.question_type_id === 'fill_blank') {
+        content += `
+          <div class="space-y-4">
+            <input type="text" id="answer_${question.id}" 
+              value="${state.answers[question.id] || ''}"
+              oninput="saveAnswer('${question.id}', this.value)"
+              placeholder="พิมพ์คำตอบที่นี่..."
+              class="w-full px-6 py-4 text-lg border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+          </div>
+        `;
+      } else if (question.question_type_id === 'matching') {
+        const savedAnswers = state.answers[question.id] || {};
+        content += `
+          <div class="grid md:grid-cols-2 gap-8">
+            <div class="space-y-3">
+              <h4 class="font-semibold text-gray-700 mb-4">คอลัมน์ A</h4>
+              ${questionData.left_items.map(item => `
+                <div class="p-4 bg-blue-50 border-2 border-blue-200 rounded-lg font-medium">
+                  ${item.id}. ${item.text}
+                </div>
+              `).join('')}
+            </div>
+            
+            <div class="space-y-3">
+              <h4 class="font-semibold text-gray-700 mb-4">คอลัมน์ B - เลือกคู่</h4>
+              ${questionData.left_items.map(leftItem => `
+                <select onchange="updateMatching('${question.id}', '${leftItem.id}', this.value)" 
+                  class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                  <option value="">เลือกคำตอบ...</option>
+                  ${questionData.right_items.map(rightItem => `
+                    <option value="${rightItem.id}" ${savedAnswers[leftItem.id] === rightItem.id ? 'selected' : ''}>
+                      ${rightItem.id}. ${rightItem.text}
+                    </option>
+                  `).join('')}
+                </select>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+      
+      return content;
+    }
+    
+    function AnalyticsPage() {
+      if (!state.analytics) {
+        return '<div class="text-center py-12">กำลังโหลดข้อมูล...</div>';
+      }
+      
+      return `
+        <div class="min-h-screen bg-gray-50">
+          <nav class="bg-white shadow-sm no-print">
+            <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+              <h1 class="text-2xl font-bold text-gray-800">📊 วิเคราะห์ข้อสอบ: ${state.currentExam.title}</h1>
+              <button onclick="navigateTo('teacher-dashboard')" class="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition">
+                ← กลับ
+              </button>
+            </div>
+          </nav>
+          
+          <div class="max-w-7xl mx-auto px-4 py-8">
+            <!-- Stats Cards -->
+            <div class="grid md:grid-cols-4 gap-6 mb-8">
+              <div class="bg-white rounded-xl shadow-sm p-6">
+                <div class="text-sm text-gray-600 mb-2">จำนวนผู้เข้าสอบ</div>
+                <div class="text-3xl font-bold text-blue-600">${state.analytics.attempts.length}</div>
+              </div>
+              
+              <div class="bg-white rounded-xl shadow-sm p-6">
+                <div class="text-sm text-gray-600 mb-2">คะแนนเฉลี่ย</div>
+                <div class="text-3xl font-bold text-green-600">${state.analytics.avgScore.toFixed(2)}</div>
+              </div>
+              
+              <div class="bg-white rounded-xl shadow-sm p-6">
+                <div class="text-sm text-gray-600 mb-2">คะแนนสูงสุด/ต่ำสุด</div>
+                <div class="text-3xl font-bold text-purple-600">${state.analytics.maxScore} / ${state.analytics.minScore}</div>
+              </div>
+              
+              <div class="bg-white rounded-xl shadow-sm p-6">
+                <div class="text-sm text-gray-600 mb-2">อัตราผ่าน</div>
+                <div class="text-3xl font-bold text-orange-600">${state.analytics.passRate.toFixed(1)}%</div>
+              </div>
+            </div>
+            
+            <!-- Question Analytics Table -->
+            <div class="bg-white rounded-xl shadow-sm p-6">
+              <h2 class="text-xl font-bold mb-6">📋 วิเคราะห์รายข้อ</h2>
+              
+              <div class="overflow-x-auto">
+                <table class="w-full">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">ข้อที่</th>
+                      <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">คำถาม</th>
+                      <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">ตอบถูก</th>
+                      <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">ความยาก (P)</th>
+                      <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">สถานะ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${(state.analytics.questionAnalytics || []).map((qa, index) => {
+                      const difficulty = qa.difficulty_index;
+                      let difficultyLabel = '';
+                      let difficultyColor = '';
+                      
+                      if (difficulty < 0.3) {
+                        difficultyLabel = 'ยากมาก';
+                        difficultyColor = 'text-red-600';
+                      } else if (difficulty < 0.7) {
+                        difficultyLabel = 'ปานกลาง';
+                        difficultyColor = 'text-yellow-600';
+                      } else {
+                        difficultyLabel = 'ง่าย';
+                        difficultyColor = 'text-green-600';
+                      }
+                      
+                      return `
+                        <tr class="border-t border-gray-200">
+                          <td class="px-4 py-4">${index + 1}</td>
+                          <td class="px-4 py-4 max-w-xs truncate">${qa.questions?.question_text || 'ไม่มีข้อมูล'}</td>
+                          <td class="px-4 py-4">${qa.correct_attempts}/${qa.total_attempts}</td>
+                          <td class="px-4 py-4 ${difficultyColor} font-semibold">${difficulty.toFixed(2)} (${difficultyLabel})</td>
+                          <td class="px-4 py-4">
+                            ${difficulty >= 0.3 && difficulty <= 0.7 ? '🟢 ดี' : '🟡 ควรปรับปรุง'}
+                          </td>
+                        </tr>
+                      `;
+                    }).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            
+            <!-- Student Results Table -->
+            <div class="bg-white rounded-xl shadow-sm p-6 mt-8">
+              <h2 class="text-xl font-bold mb-6">👥 ผลคะแนนนักเรียน</h2>
+              
+              <div class="overflow-x-auto">
+                <table class="w-full">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">ชื่อ-นามสกุล</th>
+                      <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">คะแนน</th>
+                      <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">เปอร์เซ็นต์</th>
+                      <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">ผลลัพธ์</th>
+                      <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">เวลาที่ใช้</th>
+                      <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">วันที่</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${state.analytics.attempts.map(attempt => `
+                      <tr class="border-t border-gray-200">
+                        <td class="px-4 py-4">${attempt.users?.full_name || 'ไม่ระบุ'}</td>
+                        <td class="px-4 py-4 font-semibold">${attempt.score}/${attempt.total_points}</td>
+                        <td class="px-4 py-4">${attempt.percentage.toFixed(2)}%</td>
+                        <td class="px-4 py-4">
+                          <span class="px-3 py-1 rounded-full text-sm font-semibold ${attempt.percentage >= state.currentExam.passing_score ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">
+                            ${attempt.percentage >= state.currentExam.passing_score ? '✓ ผ่าน' : '✗ ไม่ผ่าน'}
+                          </span>
+                        </td>
+                        <td class="px-4 py-4">${formatTime(attempt.time_spent)}</td>
+                        <td class="px-4 py-4">${formatDate(attempt.submitted_at)}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    
+    function ExamResultPage(data) {
+      const isPassed = data.percentage >= state.currentExam.passing_score;
+      
+      return `
+        <div class="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+          <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full p-8 fade-in">
+            <div class="text-center mb-8">
+              <div class="text-6xl mb-4">${isPassed ? '🎉' : '😔'}</div>
+              <h1 class="text-3xl font-bold mb-2 ${isPassed ? 'text-green-600' : 'text-red-600'}">
+                ${isPassed ? 'ยินดีด้วย! คุณสอบผ่าน' : 'เสียใจด้วย ยังไม่ผ่านเกณฑ์'}
+              </h1>
+              <p class="text-gray-600">${state.currentExam.title}</p>
+            </div>
+            
+            <!-- Score Display -->
+            <div class="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-8 mb-8">
+              <div class="text-center">
+                <div class="text-5xl font-bold text-blue-600 mb-2">${data.score}</div>
+                <div class="text-gray-600 mb-4">คะแนนที่ได้ / ${state.currentExam.total_score} คะแนน</div>
+                <div class="text-3xl font-bold ${isPassed ? 'text-green-600' : 'text-red-600'}">${data.percentage.toFixed(2)}%</div>
+                <div class="text-sm text-gray-500 mt-2">เกณฑ์ผ่าน: ${state.currentExam.passing_score}%</div>
+              </div>
+            </div>
+            
+            <!-- Stats -->
+            <div class="grid grid-cols-2 gap-4 mb-8">
+              <div class="text-center p-4 bg-gray-50 rounded-lg">
+                <div class="text-sm text-gray-600 mb-1">เวลาที่ใช้</div>
+                <div class="text-xl font-bold text-gray-800">${formatTime((state.currentExam.time_limit * 60) - state.timeRemaining)}</div>
+              </div>
+              
+              <div class="text-center p-4 bg-gray-50 rounded-lg">
+                <div class="text-sm text-gray-600 mb-1">จำนวนข้อ</div>
+                <div class="text-xl font-bold text-gray-800">${state.questions.length} ข้อ</div>
+              </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="space-y-3">
+              <button onclick="viewSolution()" class="w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold">
+                📖 ดูเฉลยและคำอธิบาย
+              </button>
+              <button onclick="navigateTo('student-dashboard')" class="w-full px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition">
+                กลับหน้าหลัก
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    
+    function SolutionPage() {
+      return `
+        <div class="min-h-screen bg-gray-50">
+          <nav class="bg-white shadow-sm no-print">
+            <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+              <h1 class="text-2xl font-bold text-gray-800">📖 เฉลยข้อสอบ: ${state.currentExam.title}</h1>
+              <button onclick="navigateTo('student-dashboard')" class="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition">
+                ← กลับ
+              </button>
+            </div>
+          </nav>
+          
+          <div class="max-w-4xl mx-auto px-4 py-8">
+            <div class="space-y-6">
+              ${state.questions.map((question, index) => {
+                const studentAnswer = state.answers[question.id];
+                const isCorrect = checkAnswer(question, studentAnswer);
+                const questionData = typeof question.question_data === 'string' ? JSON.parse(question.question_data) : question.question_data;
+                
+                return `
+                  <div class="bg-white rounded-xl shadow-sm p-6 ${isCorrect ? 'border-l-4 border-green-500' : 'border-l-4 border-red-500'}">
+                    <div class="flex items-start justify-between mb-4">
+                      <div>
+                        <div class="text-sm text-gray-500 mb-1">ข้อที่ ${index + 1}</div>
+                        <h3 class="text-lg font-semibold text-gray-800">${question.question_text}</h3>
+                      </div>
+                      <div class="text-right">
+                        <div class="text-2xl mb-1">${isCorrect ? '✓' : '✗'}</div>
+                        <div class="text-sm ${isCorrect ? 'text-green-600' : 'text-red-600'} font-semibold">
+                          ${isCorrect ? question.points : 0}/${question.points} คะแนน
+                        </div>
+                      </div>
+                    </div>
+                    
+                    ${renderSolution(question, studentAnswer, isCorrect)}
+                    
+                    ${question.explanation ? `
+                      <div class="mt-4 p-4 bg-blue-50 rounded-lg">
+                        <div class="text-sm font-semibold text-blue-800 mb-2">💡 คำอธิบาย:</div>
+                        <div class="text-sm text-blue-700">${question.explanation}</div>
+                      </div>
+                    ` : ''}
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    
+    function renderSolution(question, studentAnswer, isCorrect) {
+      const questionData = typeof question.question_data === 'string' ? JSON.parse(question.question_data) : question.question_data;
+      const correctAnswer = question.correct_answer;
+      
+      if (question.question_type_id === 'multiple_choice') {
+        return `
+          <div class="space-y-2 mt-4">
+            ${questionData.choices.map(choice => {
+              const isStudentChoice = studentAnswer === choice.id;
+              const isCorrectChoice = correctAnswer === choice.id;
+              
+              let className = 'p-3 border-2 rounded-lg ';
+              if (isCorrectChoice) {
+                className += 'bg-green-50 border-green-500';
+              } else if (isStudentChoice && !isCorrect) {
+                className += 'bg-red-50 border-red-500';
+              } else {
+                className += 'border-gray-200';
+              }
+              
+              return `
+                <div class="${className}">
+                  <div class="flex items-center justify-between">
+                    <span>${choice.text}</span>
+                    ${isCorrectChoice ? '<span class="text-green-600 font-semibold">✓ คำตอบที่ถูก</span>' : ''}
+                    ${isStudentChoice && !isCorrect ? '<span class="text-red-600 font-semibold">✗ คำตอบของคุณ</span>' : ''}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+      } else if (question.question_type_id === 'true_false') {
+        return `
+          <div class="mt-4 space-y-2">
+            <div class="p-3 rounded-lg ${correctAnswer === true ? 'bg-green-50 border-2 border-green-500' : 'bg-gray-50'}">
+              ✓ ถูก ${correctAnswer === true ? '← คำตอบที่ถูก' : ''}
+              ${studentAnswer === true && !isCorrect ? ' (คำตอบของคุณ ✗)' : ''}
+            </div>
+            <div class="p-3 rounded-lg ${correctAnswer === false ? 'bg-green-50 border-2 border-green-500' : 'bg-gray-50'}">
+              ✗ ผิด ${correctAnswer === false ? '← คำตอบที่ถูก' : ''}
+              ${studentAnswer === false && !isCorrect ? ' (คำตอบของคุณ ✗)' : ''}
+            </div>
+          </div>
+        `;
+      } else if (question.question_type_id === 'fill_blank') {
+        return `
+          <div class="mt-4 space-y-3">
+            <div class="p-4 ${isCorrect ? 'bg-green-50 border-2 border-green-500' : 'bg-red-50 border-2 border-red-500'} rounded-lg">
+              <div class="text-sm text-gray-600 mb-1">คำตอบของคุณ:</div>
+              <div class="font-semibold">${studentAnswer || '(ไม่ได้ตอบ)'}</div>
+            </div>
+            ${!isCorrect ? `
+              <div class="p-4 bg-green-50 border-2 border-green-500 rounded-lg">
+                <div class="text-sm text-gray-600 mb-1">คำตอบที่ถูกต้อง:</div>
+                <div class="font-semibold">${Array.isArray(correctAnswer) ? correctAnswer.join(', ') : correctAnswer}</div>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      } else if (question.question_type_id === 'matching') {
+        const studentMatching = studentAnswer || {};
+        const correctMatching = correctAnswer || {};
+        
+        return `
+          <div class="mt-4">
+            <div class="grid md:grid-cols-2 gap-4">
+              <div>
+                <h4 class="font-semibold text-gray-700 mb-3">คำตอบของคุณ:</h4>
+                <div class="space-y-2">
+                  ${questionData.left_items.map(item => {
+                    const studentMatch = studentMatching[item.id];
+                    const correctMatch = correctMatching[item.id];
+                    const matchCorrect = studentMatch === correctMatch;
+                    
+                    return `
+                      <div class="p-3 rounded-lg ${matchCorrect ? 'bg-green-50 border-2 border-green-500' : 'bg-red-50 border-2 border-red-500'}">
+                        ${item.id} → ${studentMatch || '(ไม่ได้ตอบ)'}
+                        ${matchCorrect ? ' ✓' : ' ✗'}
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              </div>
+              
+              <div>
+                <h4 class="font-semibold text-gray-700 mb-3">เฉลยที่ถูกต้อง:</h4>
+                <div class="space-y-2">
+                  ${questionData.left_items.map(item => `
+                    <div class="p-3 bg-green-50 border-2 border-green-500 rounded-lg">
+                      ${item.id} → ${correctMatching[item.id]} ✓
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      
+      return '';
+    }
+    
+    // ============================================
+    // 🎯 Navigation & Routing
+    // ============================================
+    
+    function navigateTo(view, data = null) {
+      state.currentView = view;
+      
+      if (view === 'teacher-dashboard' || view === 'student-dashboard') {
+        loadExams();
+      }
+      
+      if (view === 'take-exam') {
+        state.currentQuestionIndex = 0;
+      }
+      
+      if (view === 'exam-result') {
+        state.resultData = data;
+      }
+      
+      render();
+    }
+    
+    function goToQuestion(index) {
+      state.currentQuestionIndex = index;
+      render();
+    }
+    
+    function nextQuestion() {
+      if (state.currentQuestionIndex < state.questions.length - 1) {
+        state.currentQuestionIndex++;
+        render();
+      }
+    }
+    
+    function previousQuestion() {
+      if (state.currentQuestionIndex > 0) {
+        state.currentQuestionIndex--;
+        render();
+      }
+    }
+    
+    function viewSolution() {
+      navigateTo('solution');
+    }
+    
+    async function viewAnalytics(examId) {
+      // โหลดข้อสอบและคำถาม
+      const { data: exam } = await supabase
+        .from('exams')
+        .select('*')
+        .eq('id', examId)
+        .single();
+      
+      state.currentExam = exam;
+      await loadQuestions(examId);
+      await loadAnalytics(examId);
+      
+      navigateTo('analytics');
+    }
+    
+    // ============================================
+    // 🔨 Helper Functions
+    // ============================================
+    
+    function getSubjectColor(subject) {
+      const colors = {
+        math: 'blue',
+        english: 'red',
+        thai: 'green'
+      };
+      return colors[subject] || 'gray';
+    }
+    
+    function switchAuthTab(tab) {
+      const loginTab = document.getElementById('loginTab');
+      const registerTab = document.getElementById('registerTab');
+      const loginForm = document.getElementById('loginForm');
+      const registerForm = document.getElementById('registerForm');
+      
+      if (tab === 'login') {
+        loginTab.classList.add('border-blue-500', 'text-blue-500');
+        loginTab.classList.remove('text-gray-500');
+        registerTab.classList.remove('border-blue-500', 'text-blue-500');
+        registerTab.classList.add('text-gray-500');
+        loginForm.classList.remove('hidden');
+        registerForm.classList.add('hidden');
+      } else {
+        registerTab.classList.add('border-blue-500', 'text-blue-500');
+        registerTab.classList.remove('text-gray-500');
+        loginTab.classList.remove('border-blue-500', 'text-blue-500');
+        loginTab.classList.add('text-gray-500');
+        registerForm.classList.remove('hidden');
+        loginForm.classList.add('hidden');
+      }
+    }
+    
+    function handleLogin(event) {
+      event.preventDefault();
+      const email = document.getElementById('loginEmail').value;
+      const password = document.getElementById('loginPassword').value;
+      login(email, password);
+    }
+    
+    function handleRegister(event) {
+      event.preventDefault();
+      const email = document.getElementById('regEmail').value;
+      const password = document.getElementById('regPassword').value;
+      const fullName = document.getElementById('regFullName').value;
+      const role = document.getElementById('regRole').value;
+      const gradeLevel = document.getElementById('regGrade').value;
+      
+      register(email, password, fullName, role, gradeLevel);
+    }
+    
+    // Question Modal Functions
+    const tempQuestions = [];
+    
+    function openQuestionModal() {
+      document.getElementById('questionModal').classList.remove('hidden');
+      updateQuestionForm();
+    }
+    
+    function closeQuestionModal() {
+      document.getElementById('questionModal').classList.add('hidden');
+    }
+    
+    function updateQuestionForm() {
+      const type = document.getElementById('questionType').value;
+      const container = document.getElementById('questionFormContainer');
+      
+      let formHTML = `
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">คำถาม *</label>
+            <textarea id="questionText" required rows="3" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
+          </div>
+      `;
+      
+      if (type === 'multiple_choice') {
+        formHTML += `
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">ตัวเลือก (4 ข้อ) *</label>
+            <input type="text" id="choice1" placeholder="ก. ..." required class="w-full px-4 py-3 border border-gray-300 rounded-lg mb-2">
+            <input type="text" id="choice2" placeholder="ข. ..." required class="w-full px-4 py-3 border border-gray-300 rounded-lg mb-2">
+            <input type="text" id="choice3" placeholder="ค. ..." required class="w-full px-4 py-3 border border-gray-300 rounded-lg mb-2">
+            <input type="text" id="choice4" placeholder="ง. ..." required class="w-full px-4 py-3 border border-gray-300 rounded-lg mb-2">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">คำตอบที่ถูก *</label>
+            <select id="correctChoice" required class="w-full px-4 py-3 border border-gray-300 rounded-lg">
+              <option value="">เลือกคำตอบ</option>
+              <option value="a">ก</option>
+              <option value="b">ข</option>
+              <option value="c">ค</option>
+              <option value="d">ง</option>
+            </select>
+          </div>
+        `;
+      } else if (type === 'true_false') {
+        formHTML += `
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">คำตอบที่ถูก *</label>
+            <select id="correctTF" required class="w-full px-4 py-3 border border-gray-300 rounded-lg">
+              <option value="">เลือกคำตอบ</option>
+              <option value="true">ถูก</option>
+              <option value="false">ผิด</option>
+            </select>
+          </div>
+        `;
+      } else if (type === 'fill_blank') {
+        formHTML += `
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">คำตอบที่ถูก * (ถ้ามีหลายคำตอบ ใช้เครื่องหมาย | คั่น เช่น กรุงเทพ|กรุงเทพมหานคร)</label>
+            <input type="text" id="correctAnswer" required class="w-full px-4 py-3 border border-gray-300 rounded-lg">
+          </div>
+        `;
+      } else if (type === 'matching') {
+        formHTML += `
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">จำนวนคู่</label>
+            <input type="number" id="pairCount" value="3" min="2" max="10" onchange="updateMatchingPairs()" class="w-full px-4 py-3 border border-gray-300 rounded-lg mb-4">
+          </div>
+          <div id="matchingPairs"></div>
+        `;
+      }
+      
+      formHTML += `
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">คะแนน *</label>
+            <input type="number" id="questionPoints" required min="1" value="1" class="w-full px-4 py-3 border border-gray-300 rounded-lg">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">ความยาก</label>
+            <select id="questionDifficulty" class="w-full px-4 py-3 border border-gray-300 rounded-lg">
+              <option value="easy">ง่าย</option>
+              <option value="medium" selected>ปานกลาง</option>
+              <option value="hard">ยาก</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">คำอธิบาย (ไม่บังคับ)</label>
+          <textarea id="questionExplanation" rows="2" class="w-full px-4 py-3 border border-gray-300 rounded-lg"></textarea>
+        </div>
+      </div>
+      `;
+      
+      container.innerHTML = formHTML;
+      
+      if (type === 'matching') {
+        updateMatchingPairs();
+      }
+    }
+    
+    function updateMatchingPairs() {
+      const count = parseInt(document.getElementById('pairCount').value) || 3;
+      const container = document.getElementById('matchingPairs');
+      
+      let html = '<div class="grid md:grid-cols-2 gap-4">';
+      html += '<div><label class="block text-sm font-medium text-gray-700 mb-2">คอลัมน์ A</label>';
+      
+      for (let i = 1; i <= count; i++) {
+        html += `<input type="text" id="leftItem${i}" placeholder="รายการที่ ${i}" required class="w-full px-4 py-3 border border-gray-300 rounded-lg mb-2">`;
+      }
+      
+      html += '</div><div><label class="block text-sm font-medium text-gray-700 mb-2">คอลัมน์ B (คำตอบที่ถูก)</label>';
+      
+      for (let i = 1; i <= count; i++) {
+        html += `<input type="text" id="rightItem${i}" placeholder="คำตอบของรายการที่ ${i}" required class="w-full px-4 py-3 border border-gray-300 rounded-lg mb-2">`;
+      }
+      
+      html += '</div></div>';
+      container.innerHTML = html;
+    }
+    
+    function addQuestion() {
+      const type = document.getElementById('questionType').value;
+      const text = document.getElementById('questionText').value;
+      const points = parseInt(document.getElementById('questionPoints').value);
+      const difficulty = document.getElementById('questionDifficulty').value;
+      const explanation = document.getElementById('questionExplanation').value;
+      
+      if (!text) {
+        showToast('กรุณากรอกคำถาม', 'warning');
+        return;
+      }
+      
+      let questionData = {};
+      let answer = null;
+      
+      if (type === 'multiple_choice') {
+        const choices = [
+          { id: 'a', text: document.getElementById('choice1').value },
+          { id: 'b', text: document.getElementById('choice2').value },
+          { id: 'c', text: document.getElementById('choice3').value },
+          { id: 'd', text: document.getElementById('choice4').value }
+        ];
+        
+        answer = document.getElementById('correctChoice').value;
+        
+        if (!answer || choices.some(c => !c.text)) {
+          showToast('กรุณากรอกข้อมูลให้ครบถ้วน', 'warning');
+          return;
+        }
+        
+        questionData = { choices };
+      } else if (type === 'true_false') {
+        answer = document.getElementById('correctTF').value === 'true';
+        if (answer === '') {
+          showToast('กรุณาเลือกคำตอบ', 'warning');
+          return;
+        }
+      } else if (type === 'fill_blank') {
+        const answerText = document.getElementById('correctAnswer').value;
+        if (!answerText) {
+          showToast('กรุณากรอกคำตอบ', 'warning');
+          return;
+        }
+        answer = answerText.includes('|') ? answerText.split('|').map(a => a.trim()) : answerText;
+      } else if (type === 'matching') {
+        const pairCount = parseInt(document.getElementById('pairCount').value);
+        const leftItems = [];
+        const rightItems = [];
+        const correctMatching = {};
+        
+        for (let i = 1; i <= pairCount; i++) {
+          const left = document.getElementById(`leftItem${i}`).value;
+          const right = document.getElementById(`rightItem${i}`).value;
+          
+          if (!left || !right) {
+            showToast('กรุณากรอกข้อมูลให้ครบถ้วน', 'warning');
+            return;
+          }
+          
+          leftItems.push({ id: String(i), text: left });
+          rightItems.push({ id: String.fromCharCode(96 + i), text: right });
+          correctMatching[String(i)] = String.fromCharCode(96 + i);
+        }
+        
+        questionData = { left_items: leftItems, right_items: rightItems };
+        answer = correctMatching;
+      }
+      
+      tempQuestions.push({
+        type,
+        text,
+        data: questionData,
+        answer,
+        points,
+        difficulty,
+        explanation
+      });
+      
+      showToast('เพิ่มคำถามสำเร็จ!', 'success');
+      closeQuestionModal();
+      renderQuestionList();
+    }
+    
+    function renderQuestionList() {
+      const container = document.getElementById('questionList');
+      
+      if (tempQuestions.length === 0) {
+        container.innerHTML = '<div class="text-center py-8 text-gray-500">ยังไม่มีคำถาม กรุณาเพิ่มคำถาม</div>';
+        return;
+      }
+      
+      container.innerHTML = tempQuestions.map((q, index) => `
+        <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+          <div class="flex justify-between items-start">
+            <div class="flex-1">
+              <div class="flex items-center space-x-3 mb-2">
+                <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">ข้อ ${index + 1}</span>
+                <span class="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm">${getQuestionTypeName(q.type)}</span>
+                <span class="text-sm text-gray-600">${q.points} คะแนน</span>
+              </div>
+              <p class="text-gray-800 font-medium">${q.text}</p>
+            </div>
+            <button onclick="removeQuestion(${index})" class="ml-4 text-red-500 hover:text-red-700 text-xl">×</button>
+          </div>
+        </div>
+      `).join('');
+    }
+    
+    function removeQuestion(index) {
+      if (confirm('ต้องการลบคำถามนี้ใช่หรือไม่?')) {
+        tempQuestions.splice(index, 1);
+        renderQuestionList();
+        showToast('ลบคำถามแล้ว', 'info');
+      }
+    }
+    
+    function getQuestionTypeName(type) {
+      const names = {
+        multiple_choice: 'กาบาท',
+        true_false: 'ถูก/ผิด',
+        fill_blank: 'เติมคำ',
+        matching: 'จับคู่'
+      };
+      return names[type] || type;
+    }
+    
+    async function handleCreateExam(event) {
+      event.preventDefault();
+      
+      if (tempQuestions.length === 0) {
+        showToast('กรุณาเพิ่มคำถามอย่างน้อย 1 ข้อ', 'warning');
+        return;
+      }
+      
+      const examData = {
+        title: document.getElementById('examTitle').value,
+        description: document.getElementById('examDescription').value,
+        subject_id: document.getElementById('examSubject').value,
+        grade_level: document.getElementById('examGrade').value,
+        total_score: parseInt(document.getElementById('examTotalScore').value),
+        passing_score: parseInt(document.getElementById('examPassingScore').value),
+        time_limit: parseInt(document.getElementById('examTimeLimit').value),
+        is_published: true
+      };
+      
+      // บันทึกข้อสอบ
+      const exam = await saveExam(examData);
+      
+      if (exam) {
+        // บันทึกคำถาม
+        await saveQuestions(exam.id, tempQuestions);
+        
+        // Clear temp questions
+        tempQuestions.length = 0;
+        
+        showToast('สร้างข้อสอบสำเร็จ!', 'success');
+        navigateTo('teacher-dashboard');
+      }
+    }
+    
+    function saveDraft() {
+      // Similar to handleCreateExam but set is_published to false
+      showToast('ฟีเจอร์นี้กำลังพัฒนา', 'info');
+    }
+    
+    function editExam(examId) {
+      showToast('ฟีเจอร์แก้ไขข้อสอบกำลังพัฒนา', 'info');
+    }
+    
+    function updateMatching(questionId, leftId, rightId) {
+      if (!state.answers[questionId]) {
+        state.answers[questionId] = {};
+      }
+      state.answers[questionId][leftId] = rightId;
+      updateProgress();
+    }
+    
+    // ============================================
+    // 🖨️ Print Functions
+    // ============================================
+    
+    function printExam() {
+      window.print();
+    }
+    
+    // ============================================
+    // 🎬 Main Render Function
+    // ============================================
+    
+    function render() {
+      const app = document.getElementById('app');
+      
+      let content = '';
+      
+      switch (state.currentView) {
+        case 'login':
+          content = LoginPage();
+          break;
+        case 'teacher-dashboard':
+          content = TeacherDashboard();
+          break;
+        case 'create-exam':
+          content = CreateExamPage();
+          break;
+        case 'student-dashboard':
+          content = StudentDashboard();
+          break;
+        case 'take-exam':
+          content = TakeExamPage();
+          break;
+        case 'exam-result':
+          content = ExamResultPage(state.resultData);
+          break;
+        case 'solution':
+          content = SolutionPage();
+          break;
+        case 'analytics':
+          content = AnalyticsPage();
+          break;
+        default:
+          content = LoginPage();
+      }
+      
+      app.innerHTML = content;
+    }
+    
+    // ============================================
+    // 🚀 Initialize App
+    // ============================================
+    
+    async function init() {
+      // Check if user is already logged in
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session) {
+        // Load user profile
+        const { data: profile } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        
+        state.currentUser = { ...session.user, ...profile };
+        
+        // Navigate to appropriate dashboard
+        if (state.currentUser.role === 'teacher') {
+          navigateTo('teacher-dashboard');
+        } else {
+          navigateTo('student-dashboard');
+        }
+      } else {
+        render();
+      }
+    }
+    
+    // Start the app
+    init();
   </script>
-
-  <!-- App styles -->
-  <link rel="stylesheet" href="./css/styles.css">
-
-  <!-- Supabase (CDN) -->
-  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-  <!-- App scripts -->
-  <script type="module" src="./js/app.js"></script>
-</head>
-<body class="bg-gray-50 text-gray-900 font-sans">
-  <!-- Global Toasts -->
-  <div id="toastContainer" class="fixed top-4 right-4 space-y-2 z-50"></div>
-
-  <!-- Top Bar -->
-  <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-gray-200 no-print">
-    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <span class="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-blue-100 text-blue-600 shadow-card">📝</span>
-        <h1 class="text-lg font-semibold">Interactive Exam Management</h1>
-      </div>
-      <nav class="hidden md:flex gap-3">
-        <a href="#/student" class="px-3 py-1.5 rounded-lg hover:bg-gray-100">Student</a>
-        <a href="#/teacher" class="px-3 py-1.5 rounded-lg hover:bg-gray-100">Teacher</a>
-        <a href="#/analytics" class="px-3 py-1.5 rounded-lg hover:bg-gray-100">Analytics</a>
-      </nav>
-      <div class="flex items-center gap-2">
-        <span id="userBadge" class="text-sm text-gray-600 hidden"></span>
-        <button id="btnLogin" class="no-print px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition">เข้าสู่ระบบ</button>
-        <button id="btnLogout" class="no-print px-3 py-1.5 text-sm rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-800 hidden">ออกจากระบบ</button>
-      </div>
-    </div>
-  </header>
-
-  <!-- Mobile bottom nav -->
-  <div class="md:hidden fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 grid grid-cols-3 text-sm no-print z-40">
-    <a href="#/student" class="py-2.5 text-center hover:bg-gray-50">นักเรียน</a>
-    <a href="#/teacher" class="py-2.5 text-center hover:bg-gray-50">ครู</a>
-    <a href="#/analytics" class="py-2.5 text-center hover:bg-gray-50">วิเคราะห์</a>
-  </div>
-
-  <!-- Main -->
-  <main class="max-w-6xl mx-auto px-4 md:px-6 pt-6 pb-24">
-    <!-- Route outlet -->
-    <div id="app"></div>
-  </main>
-
-  <!-- Print-only headers -->
-  <section class="print-only hidden px-6 pt-6">
-    <div class="flex items-center justify-between">
-      <div>
-        <h2 class="text-xl font-bold">ใบงาน/ข้อสอบ</h2>
-        <p class="text-sm">ระบบ Interactive Exam Management</p>
-      </div>
-      <div class="text-sm">
-        วันที่: <span id="printDate"></span>
-      </div>
-    </div>
-    <div class="mt-4 grid grid-cols-3 gap-4 text-sm">
-      <div>ชื่อ-สกุล: ____________________________</div>
-      <div>เลขที่: ________</div>
-      <div>ชั้น/ห้อง: __________</div>
-    </div>
-    <hr class="my-4 border-dashed">
-  </section>
 </body>
 </html>
